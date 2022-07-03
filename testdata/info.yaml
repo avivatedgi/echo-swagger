@@ -1,0 +1,11 @@
+title: Example
+description: My Description
+termsOfService: Example
+contact:
+    name: Aviv Atedgi
+    url: https://www.github.com/avivatedgi
+    email: aviv.atedgi2000@gmail.com
+license:
+    name: GNU General Public License v3.0
+    url: https://www.gnu.org/licenses/gpl-3.0.en.html
+version: "1.0"
