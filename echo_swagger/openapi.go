@@ -402,11 +402,9 @@ func propertyFromLiteralType(t string) Property {
 		propertyType = PropertyType_Map
 	} else if strings.HasPrefix(t, "[]") {
 		return Property{
-			PropertyData: PropertyData{
-				Type:   PropertyType_Array,
-				Format: PropertyFormat_None,
-			},
-			Items: propertyFromLiteralType(t[2:]).IntoPropertyData(),
+			Type:   PropertyType_Array,
+			Format: PropertyFormat_None,
+			Items:  propertyFromLiteralType(t[2:]),
 		}
 	} else if propertyType == PropertyType_None {
 		// Didn't found anything, it's probablly object
@@ -414,14 +412,12 @@ func propertyFromLiteralType(t string) Property {
 	}
 
 	return Property{
-		PropertyData: PropertyData{
-			Type:   propertyType,
-			Format: propertyFormat,
-		},
+		Type:   propertyType,
+		Format: propertyFormat,
 	}
 }
 
-type PropertyData struct {
+type Property struct {
 	// REQUIRED. The schema defining the type used for the query or form parameter.
 	Type PropertyType `yaml:"type,omitempty" validate:"required"`
 
@@ -439,26 +435,15 @@ type PropertyData struct {
 
 	// Either the property is required or not. Used for internal use
 	Required bool `yaml:"-"`
-}
-
-type Property struct {
-	PropertyData `yaml:",inline"`
 
 	// Specifies the items of the array if the property type is "array".
-	Items PropertyData `yaml:"items,omitempty"`
-}
-
-func (p Property) IntoPropertyData() PropertyData {
-	return PropertyData{
-		Type:       p.Type,
-		Properties: p.Properties,
-		Format:     p.Format,
-	}
+	// It's must be of type interface{} because Items is actually a property.
+	Items interface{} `yaml:"items,omitempty"`
 }
 
 func (p *Property) fixType() Property {
-	if p.PropertyData.Type == PropertyType_Map {
-		p.PropertyData.Type = PropertyType_Object
+	if p.Type == PropertyType_Map {
+		p.Type = PropertyType_Object
 	}
 
 	return *p

@@ -34,12 +34,12 @@ func errorWithPackageFile(pkg string, err error) error {
 	return fmt.Errorf("error in package %s: %s", pkg, err.Error())
 }
 
-func errorUnfoundPackage(pkg string, location string) error {
-	return fmt.Errorf("unfound package `%s` at `%s`", pkg, location)
+func errorUnfoundPackage(pkg string) error {
+	return fmt.Errorf("unfound package `%s`", pkg)
 }
 
-func errorUnfoundStructInPackage(pkg string, structure string, location string) error {
-	return fmt.Errorf("unfound struct `%s` in package `%s` at `%s`", structure, pkg, location)
+func errorUnfoundStructInPackage(pkg string, structure string) error {
+	return fmt.Errorf("unfound struct `%s` in package `%s`", structure, pkg)
 }
 
 func errorInvalidEmbeddedType(location string) error {

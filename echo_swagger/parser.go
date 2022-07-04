@@ -339,6 +339,42 @@ func (context *ParserContext) parseResponses(structName string, data pathMethodT
 	return nil
 }
 
+func (context *ParserContext) extractPropertyFromArray(property *Property, arrayType string, tag string) error {
+	itemProperty, ok := property.Items.(Property)
+	if !ok {
+		return nil
+	}
+
+	if itemProperty.Type == PropertyType_Array {
+		if err := context.extractPropertyFromArray(&itemProperty, arrayType[2:], tag); err != nil {
+			return err
+		}
+
+		property.Items = itemProperty
+		return nil
+	} else if itemProperty.Type != PropertyType_Object {
+		return nil
+	}
+
+	// If it is a declared or embedded struct, then we need to extract it from the structs map
+	pkg, name := getPackageAndTypeNameOfExpressionString(arrayType[2:])
+	if pkg == "" {
+		pkg = context.pkg.Name
+	}
+
+	structType, err := context.getStructTypeByPackageAndName(pkg, name)
+	if err != nil {
+		return err
+	}
+
+	if err := context.extractPropertyFromStruct(&itemProperty, "", structType, tag); err != nil {
+		return err
+	}
+
+	property.Items = itemProperty
+	return nil
+}
+
 func (context *ParserContext) extractPropertyFromStruct(property *Property, structName string, structType *ast.StructType, tag string) error {
 	property.Properties = make(map[string]Property)
 
@@ -383,13 +419,9 @@ func (context *ParserContext) extractPropertyFromStruct(property *Property, stru
 			pkg = context.pkg.Name
 		}
 
-		if _, ok := context.structures[pkg]; !ok {
-			return errorUnfoundPackage(pkg, structName)
-		}
-
-		structType, ok := context.structures[pkg][name]
-		if !ok {
-			return errorUnfoundStructInPackage(pkg, name, structName)
+		structType, err := context.getStructTypeByPackageAndName(pkg, name)
+		if err != nil {
+			return err
 		}
 
 		if err := context.extractPropertyFromStruct(&fieldProperty, fieldName, structType, tag); err != nil {
@@ -443,9 +475,17 @@ func (context *ParserContext) extractPropertyFromField(field *ast.Field, tag str
 		}
 	}
 
+	if property.Type == PropertyType_Array {
+		if err := context.extractPropertyFromArray(&property, types.ExprString(field.Type), tag); err != nil {
+			return property, errorWithLocation(fieldName, err)
+		}
+
+		return property, nil
+	}
+
 	structType, ok := field.Type.(*ast.StructType)
 	if !ok || structType == nil || structType.Fields == nil || structType.Fields.List == nil {
-		return property, err
+		return property, nil
 	}
 
 	if err := context.extractPropertyFromStruct(&property, fieldName, structType, tag); err != nil {
@@ -454,4 +494,17 @@ func (context *ParserContext) extractPropertyFromField(field *ast.Field, tag str
 
 	property.fixType()
 	return property, nil
+}
+
+func (context *ParserContext) getStructTypeByPackageAndName(pkg string, name string) (*ast.StructType, error) {
+	if _, ok := context.structures[pkg]; !ok {
+		return nil, errorUnfoundPackage(pkg)
+	}
+
+	structType, ok := context.structures[pkg][name]
+	if !ok {
+		return nil, errorUnfoundStructInPackage(pkg, name)
+	}
+
+	return structType, nil
 }

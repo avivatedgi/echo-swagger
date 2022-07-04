@@ -105,15 +105,17 @@ func extractAttributesFromComments(location, comments string) (attributes, error
 	return attributes, nil
 }
 
-func getPackageAndTypeNameOfExpression(t ast.Expr) (string, string) {
-	data := types.ExprString(t)
-
+func getPackageAndTypeNameOfExpressionString(data string) (string, string) {
 	if strings.Contains(data, ".") {
 		parts := strings.Split(data, ".")
 		return parts[0], parts[1]
 	}
 
 	return "", data
+}
+
+func getPackageAndTypeNameOfExpression(t ast.Expr) (string, string) {
+	return getPackageAndTypeNameOfExpressionString(types.ExprString(t))
 }
 
 type structType int

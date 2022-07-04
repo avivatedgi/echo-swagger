@@ -9,6 +9,10 @@ type Nested struct {
 	Nested []float64 `json:"nested"`
 }
 
+type Item struct {
+	X int `json:"x"`
+}
+
 // @route /influencers/{id}
 // @method POST
 // @summary This is a summary of the endpoint.
@@ -34,6 +38,12 @@ type MyExample struct {
 
 		// @description a boolean example
 		Boolean bool `json:"boolExample"`
+
+		// @description a array of structures
+		Items []Item `json:"items"`
+
+		// @description a array of array of structures
+		TwoDimensionsItems [][]Item `json:"items2d"`
 	}
 }
 

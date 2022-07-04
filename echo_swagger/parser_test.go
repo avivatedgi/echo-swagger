@@ -19,10 +19,10 @@ func TestParameters(t *testing.T) {
 		assert.NotEqual(operation, nil)
 
 		params := map[string]Parameter{
-			"id":        {Name: "id", In: "path", Required: true, Description: "The id description", Schema: Schema{Property: Property{PropertyData: PropertyData{Type: PropertyType_String}}}},
-			"pageIndex": {Name: "pageIndex", In: "query", Required: true, Description: "The page description", Schema: Schema{Property: Property{PropertyData: PropertyData{Type: PropertyType_Integer}}}},
-			"amount":    {Name: "amount", In: "query", Deprecated: true, Description: "The amount description", Schema: Schema{Property: Property{PropertyData: PropertyData{Type: PropertyType_Number, Format: PropertyFormat_Double}}}},
-			"Example":   {Name: "Example", In: "header", Required: false, Description: "", Schema: Schema{Property: Property{PropertyData: PropertyData{Type: PropertyType_String}}}},
+			"id":        {Name: "id", In: "path", Required: true, Description: "The id description", Schema: Schema{Property: Property{Type: PropertyType_String}}},
+			"pageIndex": {Name: "pageIndex", In: "query", Required: true, Description: "The page description", Schema: Schema{Property: Property{Type: PropertyType_Integer}}},
+			"amount":    {Name: "amount", In: "query", Deprecated: true, Description: "The amount description", Schema: Schema{Property: Property{Type: PropertyType_Number, Format: PropertyFormat_Double}}},
+			"Example":   {Name: "Example", In: "header", Required: false, Description: "", Schema: Schema{Property: Property{Type: PropertyType_String}}},
 		}
 
 		for _, param := range operation.Parameters {
@@ -32,8 +32,8 @@ func TestParameters(t *testing.T) {
 			assert.Equal(expected.Required, param.Required)
 			assert.Equal(expected.Deprecated, param.Deprecated)
 			assert.Equal(expected.Description, param.Description)
-			assert.Equal(expected.Schema.PropertyData.Type, param.Schema.PropertyData.Type)
-			assert.Equal(expected.Schema.PropertyData.Format, param.Schema.PropertyData.Format)
+			assert.Equal(expected.Schema.Type, param.Schema.Type)
+			assert.Equal(expected.Schema.Format, param.Schema.Format)
 		}
 	}
 }
@@ -49,7 +49,7 @@ func TestBody(t *testing.T) {
 
 	_, err := parser.ParseDirectories([]string{"../testdata/body", "../testdata/body/another_package"})
 	assert.Error(err)
-	assert.Equal(errorWithPackageFile("example", errorWithLocation("MyExample", errorUnfoundPackage("another_package", "Body"))), err)
+	assert.Equal(errorWithPackageFile("example", errorWithLocation("MyExample", errorUnfoundPackage("another_package"))), err)
 
 	_, err = parser.ParseDirectories([]string{"../testdata/body/invalid_embedded_type"})
 	assert.Error(err)
@@ -75,33 +75,47 @@ func TestBody(t *testing.T) {
 	assert.Equal(schema.Property.Type, PropertyType_Object)
 
 	assert.True(itemExists(schema.Property.Properties, "name"))
-	assert.Equal(schema.Property.Properties["name"].PropertyData.Type, PropertyType_String)
+	assert.Equal(schema.Property.Properties["name"].Type, PropertyType_String)
 
 	assert.True(itemExists(schema.Property.Properties, "a"))
-	assert.Equal(schema.Property.Properties["a"].PropertyData.Type, PropertyType_String)
+	assert.Equal(schema.Property.Properties["a"].Type, PropertyType_String)
 
 	assert.True(itemExists(schema.Property.Properties, "b"))
-	assert.Equal(schema.Property.Properties["b"].PropertyData.Type, PropertyType_String)
+	assert.Equal(schema.Property.Properties["b"].Type, PropertyType_String)
 
 	assert.True(itemExists(schema.Property.Properties, "c"))
-	assert.Equal(schema.Property.Properties["c"].PropertyData.Type, PropertyType_Object)
+	assert.Equal(schema.Property.Properties["c"].Type, PropertyType_Object)
 
 	assert.True(itemExists(schema.Property.Properties["c"].Properties, "nested"))
-	assert.Equal(schema.Property.Properties["c"].Properties["nested"].PropertyData.Type, PropertyType_Array)
-	assert.Equal(schema.Property.Properties["c"].Properties["nested"].Items.Type, PropertyType_Number)
-	assert.Equal(schema.Property.Properties["c"].Properties["nested"].Items.Format, PropertyFormat_Float)
+	assert.Equal(schema.Property.Properties["c"].Properties["nested"].Type, PropertyType_Array)
+	assert.Equal(schema.Property.Properties["c"].Properties["nested"].Items.(Property).Type, PropertyType_Number)
+	assert.Equal(schema.Property.Properties["c"].Properties["nested"].Items.(Property).Format, PropertyFormat_Float)
 
 	assert.True(itemExists(schema.Property.Properties, "nested"))
 	assert.True(itemExists(schema.Property.Properties["nested"].Properties, "nested"))
-	assert.Equal(schema.Property.Properties["nested"].Properties["nested"].PropertyData.Type, PropertyType_Array)
-	assert.Equal(schema.Property.Properties["nested"].Properties["nested"].Items.Type, PropertyType_Number)
-	assert.Equal(schema.Property.Properties["nested"].Properties["nested"].Items.Format, PropertyFormat_Double)
+	assert.Equal(schema.Property.Properties["nested"].Properties["nested"].Type, PropertyType_Array)
+	assert.Equal(schema.Property.Properties["nested"].Properties["nested"].Items.(Property).Type, PropertyType_Number)
+	assert.Equal(schema.Property.Properties["nested"].Properties["nested"].Items.(Property).Format, PropertyFormat_Double)
 
 	assert.True(itemExists(schema.Property.Properties, "mapper"))
 	assert.Equal(schema.Property.Properties["mapper"].Type, PropertyType_Object)
 
 	assert.True(itemExists(schema.Property.Properties, "boolExample"))
 	assert.Equal(schema.Property.Properties["boolExample"].Type, PropertyType_Boolean)
+
+	assert.True(itemExists(schema.Property.Properties, "items"))
+	assert.Equal(schema.Property.Properties["items"].Type, PropertyType_Array)
+	assert.Equal(schema.Property.Properties["items"].Items.(Property).Type, PropertyType_Object)
+	assert.True(itemExists(schema.Property.Properties["items"].Items.(Property).Properties, "x"))
+	assert.Equal(schema.Property.Properties["items"].Items.(Property).Properties["x"].Type, PropertyType_Integer)
+
+	assert.True(itemExists(schema.Property.Properties, "items2d"))
+	assert.Equal(schema.Property.Properties["items2d"].Type, PropertyType_Array)
+	assert.Equal(schema.Property.Properties["items2d"].Items.(Property).Type, PropertyType_Array)
+	assert.Equal(schema.Property.Properties["items2d"].Items.(Property).Items.(Property).Type, PropertyType_Object)
+	t.Log(schema.Property.Properties["items2d"].Items.(Property).Items.(Property).Properties)
+	assert.True(itemExists(schema.Property.Properties["items2d"].Items.(Property).Items.(Property).Properties, "x"))
+	assert.Equal(schema.Property.Properties["items2d"].Items.(Property).Items.(Property).Properties["x"].Type, PropertyType_Integer)
 }
 
 func TestResponses(t *testing.T) {
@@ -131,10 +145,10 @@ func TestResponses(t *testing.T) {
 	assert.Equal(schema.Property.Type, PropertyType_Object)
 
 	assert.True(itemExists(schema.Property.Properties, "status"))
-	assert.Equal(schema.Property.Properties["status"].PropertyData.Type, PropertyType_Integer)
+	assert.Equal(schema.Property.Properties["status"].Type, PropertyType_Integer)
 
 	assert.True(itemExists(schema.Property.Properties, "user"))
-	assert.Equal(schema.Property.Properties["user"].PropertyData.Type, PropertyType_Object)
+	assert.Equal(schema.Property.Properties["user"].Type, PropertyType_Object)
 
 	assert.True(itemExists(schema.Property.Properties["user"].Properties, "id"))
 	assert.Equal(schema.Property.Properties["user"].Properties["id"].Type, PropertyType_String)
