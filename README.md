@@ -19,7 +19,7 @@ get get -u github.com/avivatedgi/echo-swagger
 Example:
 
 ```bash
-./echo-swagger --dir package_a/ package_b/ package_c/ --out openapi.yaml --info my_info.yaml
+./echo-swagger --info my_info.yaml --dir package_a/ --dir package_b/ --dir package_c/ --out openapi.yaml
 ```
 
 Options:

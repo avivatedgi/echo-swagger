@@ -165,3 +165,16 @@ func TestNoMatchingStructs(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal(len(openapi.Paths), 0)
 }
+
+func TestTags(t *testing.T) {
+	assert := assert.New(t)
+	parser := New()
+
+	openapi, err := parser.ParseDirectories([]string{"../testdata/tags"})
+	assert.NoError(err)
+
+	assert.Equal(openapi.Paths["/example/no-tags"].Post.Tags, []string{})
+	assert.Equal(openapi.Paths["/example/one-tag"].Post.Tags, []string{"A"})
+	assert.Equal(openapi.Paths["/example/one-complex-tag"].Post.Tags, []string{"Hello World"})
+	assert.Equal(openapi.Paths["/example/multiple-complex-tag"].Post.Tags, []string{"Hello World", "How", "Omri Siniver", "Is", "Today"})
+}

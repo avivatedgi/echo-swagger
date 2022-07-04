@@ -209,7 +209,7 @@ func (context *ParserContext) parseHandlerStructComments(name string, comments s
 	tagsValue := attributes.GetValueOrDefault(TagsAttribute)
 	tags := []string{}
 	if tagsValue != "" {
-		tags = strings.Split(tagsValue, " ")
+		tags = parseStringByQuotesAndSpaces(tagsValue)
 	}
 
 	path, exists := context.openapi.Paths[route]
