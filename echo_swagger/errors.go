@@ -30,8 +30,8 @@ func errorWithLocation(location string, err error) error {
 	return fmt.Errorf("%s: %s", location, err)
 }
 
-func errorWithPackageFile(pkg string, file string, err error) error {
-	return fmt.Errorf("error in package %s, file %s: %s", pkg, file, err.Error())
+func errorWithPackageFile(pkg string, err error) error {
+	return fmt.Errorf("error in package %s: %s", pkg, err.Error())
 }
 
 func errorUnfoundPackage(pkg string, location string) error {

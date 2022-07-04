@@ -16,7 +16,6 @@ type (
 	ParserContext struct {
 		openapi    *OpenAPI
 		pkg        *ast.Package
-		file       *ast.File
 		structures map[string]map[string]*ast.StructType
 	}
 )
@@ -47,12 +46,8 @@ func (context *ParserContext) ParseDirectories(dirs []string) (*OpenAPI, error) 
 			// Update the current package
 			context.pkg = pkg
 
-			for _, file := range pkg.Files {
-				context.file = file
-
-				if err := context.parseFile(); err != nil {
-					return nil, errorWithPackageFile(name, file.Name.Name, err)
-				}
+			if err := context.parsePackage(); err != nil {
+				return nil, errorWithPackageFile(name, err)
 			}
 		}
 	}
@@ -60,7 +55,7 @@ func (context *ParserContext) ParseDirectories(dirs []string) (*OpenAPI, error) 
 	return context.openapi, nil
 }
 
-func (context *ParserContext) parseFile() error {
+func (context *ParserContext) parsePackage() error {
 	documentation := doc.New(context.pkg, "./", doc.AllDecls)
 
 	// This map is used to store the struct names to the path and method
@@ -91,7 +86,7 @@ func (context *ParserContext) parseFile() error {
 
 	var rootError error = nil
 
-	ast.Inspect(context.file, func(n ast.Node) bool {
+	ast.Inspect(context.pkg, func(n ast.Node) bool {
 		switch n := n.(type) {
 		case *ast.GenDecl:
 			for _, spec := range n.Specs {

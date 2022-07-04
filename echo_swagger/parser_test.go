@@ -49,11 +49,11 @@ func TestBody(t *testing.T) {
 
 	_, err := parser.ParseDirectories([]string{"../testdata/body", "../testdata/body/another_package"})
 	assert.Error(err)
-	assert.Equal(errorWithPackageFile("example", "example", errorWithLocation("MyExample", errorUnfoundPackage("another_package", "Body"))), err)
+	assert.Equal(errorWithPackageFile("example", errorWithLocation("MyExample", errorUnfoundPackage("another_package", "Body"))), err)
 
 	_, err = parser.ParseDirectories([]string{"../testdata/body/invalid_embedded_type"})
 	assert.Error(err)
-	assert.Equal(errorWithPackageFile("invalid_embedded_type", "invalid_embedded_type", errorWithLocation("Example", errorInvalidEmbeddedType("Body"))), err)
+	assert.Equal(errorWithPackageFile("invalid_embedded_type", errorWithLocation("Example", errorInvalidEmbeddedType("Body"))), err)
 
 	openapi, err := parser.ParseDirectories([]string{"../testdata/body/another_package", "../testdata/body"})
 	if !assert.NoError(err) {
@@ -110,7 +110,7 @@ func TestResponses(t *testing.T) {
 
 	_, err := parser.ParseDirectories([]string{"../testdata/responses/missing_description"})
 	assert.Error(err)
-	assert.Equal(errorWithPackageFile("missing_description", "missing_description", errorWithLocation("MissingDescription.OKResponse", errorMissingDescription("MissingDescription"))), err)
+	assert.Equal(errorWithPackageFile("missing_description", errorWithLocation("MissingDescription.OKResponse", errorMissingDescription("MissingDescription"))), err)
 
 	openapi, err := parser.ParseDirectories([]string{"../testdata/body/another_package", "../testdata/responses"})
 	assert.NoError(err)
@@ -148,13 +148,13 @@ func TestErrors(t *testing.T) {
 	parser := New()
 
 	_, err := parser.ParseDirectories([]string{"../testdata/errors/duplicate-attribute-error"})
-	assert.EqualError(err, errorWithPackageFile("example", "example", errorDuplicateAttribute("DuplicateAttributeError", "route")).Error())
+	assert.EqualError(err, errorWithPackageFile("example", errorDuplicateAttribute("DuplicateAttributeError", "route")).Error())
 
 	_, err = parser.ParseDirectories([]string{"../testdata/errors/missing-route-attribute"})
-	assert.EqualError(err, errorWithPackageFile("example", "example", errorMissingAttribute("MissingRouteAttribute", "route")).Error())
+	assert.EqualError(err, errorWithPackageFile("example", errorMissingAttribute("MissingRouteAttribute", "route")).Error())
 
 	_, err = parser.ParseDirectories([]string{"../testdata/errors/missing-method-attribute"})
-	assert.EqualError(err, errorWithPackageFile("example", "example", errorMissingAttribute("MissingRouteAttribute", "method")).Error())
+	assert.EqualError(err, errorWithPackageFile("example", errorMissingAttribute("MissingRouteAttribute", "method")).Error())
 }
 
 func TestNoMatchingStructs(t *testing.T) {
