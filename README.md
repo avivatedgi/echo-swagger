@@ -47,7 +47,11 @@ version: "1.0"
 
 ### Format
 
-The structure format is exactly as described in the [echo-binder](https://github.com/avivatedgi/echo-binder) documentation, but it has an extra thing: documentation attributes (starting with `@`).
+The structure format is exactly as described in the [echo-binder](https://github.com/avivatedgi/echo-binder) documentation, but it has an extra thing: documentation attributes (starting with `@`). The OpenAPI handlers will be generated only from type that:
+
+* Are structures
+* Ends with the name `Request`
+* Has the `@route` and `@method` attributes
 
 <details>
   <summary>Full Example</summary>
@@ -70,7 +74,7 @@ type CommonResponse struct {
 // This route update the user by it's id.
 // @operationId update-user-by-id
 // @tags "First Tag" SecondTag
-type UpdateUserById struct {
+type UpdateUserByIdRequest struct {
     Body struct {
         // will be required because of the go-playground/validator validate required tag.
         Username string `json:"username" validate:"required"`
@@ -105,6 +109,87 @@ type UpdateUserById struct {
 
 </details>
 
+<details>
+  <summary>Output</summary>
+
+```yaml
+openapi: 3.0.0
+info:
+    title: Example
+    description: My Description
+    termsOfService: Example
+    contact:
+        name: Aviv Atedgi
+        url: https://www.github.com/avivatedgi
+        email: aviv.atedgi2000@gmail.com
+    license:
+        name: GNU General Public License v3.0
+        url: https://www.gnu.org/licenses/gpl-3.0.en.html
+    version: "1.0"
+paths:
+    /users/{id}:
+        put:
+            tags:
+                - First Tag
+                - SecondTag
+            summary: A little summary about this route - update user by id.
+            description: Some description about this route. A description can also be multi-line. This route update the user by it's id.
+            operationId: update-user-by-id
+            parameters:
+                - name: Accept-Language
+                  in: header
+                  required: false
+                  schema:
+                    type: string
+                - name: jwt
+                  in: header
+                  required: false
+                  schema:
+                    type: string
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: age
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                            properties:
+                                username:
+                                    type: string
+                            required:
+                                - username
+            responses:
+                "200":
+                    description: A success response
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    status_code:
+                                        type: integer
+                                description: A success response
+                "400":
+                    description: A bad response
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    status_code:
+                                        type: integer
+                                description: A bad response
+```
+</details>
+
 The echo swagger knows to parse the structure documentation into attributes, and formation into swagger-scheme and with both of them to build an OpenAPI scheme.
 
 #### Struct Handler Attributes
@@ -131,7 +216,7 @@ A struct handler is a struct that implements the `Handle(c echo.Context)error` f
 // This route update the user by it's id.
 // @operationId update-user-by-id
 // @tags Users Updates
-type UpdateUserById struct {}
+type UpdateUserByIdRequest struct {}
 ```
 
 </details>
@@ -146,7 +231,7 @@ Parameters meaning is all the parameters that are related to the `Body`, `Path`,
   ```go
   // @route /example
   // @method PUT
-  type Example struct {
+  type ExampleRequest struct {
     Query struct {
         // This field will be required because of the validate:"required" tag.
         Page int `binder:"page" validate:"required"`
