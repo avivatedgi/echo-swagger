@@ -2,33 +2,25 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"os"
 
 	"github.com/avivatedgi/echo-swagger/echo_swagger"
+	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
-type arrayFlag []string
-
-func (i *arrayFlag) String() string {
-	return ""
-}
-
-func (i *arrayFlag) Set(value string) error {
-	*i = append(*i, value)
-	return nil
-}
-
 func main() {
+	log.SetLevel(log.DebugLevel)
+
 	var infoFile *os.File = nil
 
 	output := os.Stdout
-	directories := arrayFlag{}
 
-	flag.Var(&directories, "dir", "Directories to scan for swagger routes, make sure to pass declaration files before the routes")
-	flag.Func("out", "`path` to file output (default STDOUT)", func(s string) error {
+	directory := flag.String("dir", "", "Directory to scan for request handlers")
+	pattern := flag.String("pattern", "./...", "Package pattern to scan for request handlers")
+
+	flag.Func("out", "Path to file output to write in the geerated OpenAPI specifications", func(s string) error {
 		if s == "-" {
 			return nil
 		}
@@ -41,6 +33,7 @@ func main() {
 		output = f
 		return nil
 	})
+
 	flag.Func("info", "`path` to info file", func(s string) error {
 		f, err := os.Open(s)
 		if err != nil {
@@ -50,41 +43,53 @@ func main() {
 		infoFile = f
 		return nil
 	})
+
+	// Parse the actual arguments from the command line
 	flag.Parse()
 
+	// Validate the arguments from the command line
 	if infoFile == nil {
-		fmt.Fprintf(os.Stderr, "Info file is required\n")
-		os.Exit(1)
+		log.Fatal("info file is required!")
+	} else if directory == nil || *directory == "" {
+		log.Fatal("directory is required!")
+	} else if pattern == nil || *pattern == "" {
+		log.Fatal("pattern is required!")
 	}
 
+	// Read the info file
 	infoData, err := ioutil.ReadAll(infoFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read info file `%s`, error = `%s`\n", infoFile.Name(), err)
-		os.Exit(1)
+		log.Fatal("Failed to read info file `", infoFile.Name(), "`, error = ", err)
 	}
 
+	// Unmarshal the info file
 	info := echo_swagger.Info{}
 	if err := yaml.Unmarshal(infoData, &info); err != nil {
-		panic(err)
+		log.Fatal("Failed to unmarshal info file, error = ", err)
 	}
 
 	if output != os.Stdout {
 		defer output.Close()
 	}
 
-	parser := echo_swagger.New()
+	parser := echo_swagger.NewContext()
 
-	openapi, err := parser.ParseDirectories([]string(directories))
+	// Parse the directory
+	err = parser.ParseDirectory(*directory, *pattern)
 	if err != nil {
-		panic(err)
+		log.Fatal("Failed to parse directory ", directory, ", error = ", err)
 	}
 
-	openapi.Info = info
+	parser.OpenAPI.Info = info
 
-	data, err := yaml.Marshal(openapi)
+	// Marshal the generated OpenAPI specifications
+	data, err := yaml.Marshal(parser.OpenAPI)
 	if err != nil {
-		panic(err)
+		log.Fatal("Failed to marshal generated OpenAPI specifications: ", err)
 	}
 
-	output.Write(data)
+	// Write the OpenAPI specifications to the output file
+	if _, err := output.Write(data); err != nil {
+		log.Fatal("Failed to write generated OpenAPI specifications to file ", output.Name(), ", error = ", err)
+	}
 }

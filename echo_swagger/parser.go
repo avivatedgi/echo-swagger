@@ -2,509 +2,398 @@ package echo_swagger
 
 import (
 	"go/ast"
-	"go/doc"
-	"go/parser"
 	"go/token"
 	"go/types"
-	"strconv"
 	"strings"
 
-	"github.com/fatih/structtag"
+	log "github.com/sirupsen/logrus"
+	"golang.org/x/tools/go/packages"
 )
 
-type (
-	ParserContext struct {
-		openapi    *OpenAPI
-		pkg        *ast.Package
-		structures map[string]map[string]*ast.StructType
-	}
-)
+type Context struct {
+	OpenAPI        *OpenAPI
+	directory      string
+	packagesConfig *packages.Config
+	pkg            *packages.Package
+	file           *ast.File
+}
 
-func New() *ParserContext {
-	return &ParserContext{
-		structures: make(map[string]map[string]*ast.StructType),
+func NewContext() *Context {
+	return &Context{
+		OpenAPI: &OpenAPI{
+			OpenAPI:  OpenApiVersion,
+			Servers:  []Server{},
+			Paths:    map[string]*Path{},
+			Security: []SecurityRequirement{},
+			Tags:     []Tag{},
+		},
 	}
 }
 
-func (context *ParserContext) ParseDirectories(dirs []string) (*OpenAPI, error) {
-	context.openapi = &OpenAPI{
-		OpenAPI:  OpenApiVersion,
-		Servers:  []Server{},
-		Paths:    map[string]*Path{},
-		Security: []SecurityRequirement{},
-		Tags:     []Tag{},
+func (context *Context) ParseDirectory(directory string, pattern string) error {
+	fset := token.NewFileSet()
+
+	context.directory = directory
+
+	context.packagesConfig = &packages.Config{
+		Mode: packages.NeedName |
+			packages.NeedTypes |
+			packages.NeedSyntax |
+			packages.NeedTypesInfo,
+
+		Fset: fset,
+
+		Dir: directory,
 	}
 
-	for _, dir := range dirs {
-		fileSet := token.NewFileSet()
-		packages, err := parser.ParseDir(fileSet, dir, nil, parser.ParseComments)
-		if err != nil {
-			return nil, err
-		}
+	pkgs, err := packages.Load(context.packagesConfig, pattern)
+	if err != nil {
+		return err
+	}
 
-		for name, pkg := range packages {
-			// Update the current package
-			context.pkg = pkg
-
-			if err := context.parsePackage(); err != nil {
-				return nil, errorWithPackageFile(name, err)
-			}
+	for _, pkg := range pkgs {
+		if err := context.parseTypesFromPackage(pkg); err != nil {
+			return err
 		}
 	}
 
-	return context.openapi, nil
+	return nil
 }
 
-func (context *ParserContext) parsePackage() error {
-	documentation := doc.New(context.pkg, "./", doc.AllDecls)
+func (context *Context) parseTypesFromPackage(pkg *packages.Package) error {
+	context.pkg = pkg
 
-	// This map is used to store the struct names to the path and method
-	// because parsing the struct documentation and struct fields are done in
-	// two different places
-	routesData := map[string]pathMethodTupple{}
+	for _, file := range context.pkg.Syntax {
+		context.file = file
 
-	for _, t := range documentation.Types {
-		for _, v := range t.Methods {
-			if isRequestHandler(v.Decl) {
-				path, method, err := context.parseHandlerStructComments(t.Name, t.Doc)
-				if err != nil {
-					return err
-				}
-
-				operation, err := context.openapi.Paths[path].GetOperationByMethod(method)
-				if operation == nil || err != nil {
-					return err
-				}
-
-				routesData[t.Name] = pathMethodTupple{Path: path, Method: method}
-
-				// We found our Handle method, no need to continue run on this structure methods.
-				break
+		ast.Inspect(context.file, func(n ast.Node) bool {
+			node, ok := n.(*ast.GenDecl)
+			if !ok || node.Tok != token.TYPE {
+				// Check if the node is a type declaration, if no let's continue the inspection.
+				return true
 			}
-		}
+
+			documentation := ""
+			if len(node.Specs) == 1 && node.Doc != nil {
+				documentation = node.Doc.Text()
+			}
+
+			for _, spec := range node.Specs {
+				spec, ok := spec.(*ast.TypeSpec)
+				if !ok {
+					// Check if the spec is a type spec, if no let's continue the inspection.
+					continue
+				}
+
+				structType, ok := spec.Type.(*ast.StructType)
+				if !ok {
+					// Check if the spec is a struct type, if no let's continue the inspection.
+					continue
+				}
+
+				structName := spec.Name.Name
+
+				if !strings.HasSuffix(strings.ToLower(structName), "request") {
+					// We want only structures that end with "Request".
+					continue
+				} else if spec.Doc == nil && documentation == "" {
+					// We want only structures that have a comments to parse their attributes.
+					log.Debug("Handler", structName, "found without attributes, skipping...")
+					continue
+				} else if spec.Doc != nil {
+					documentation = spec.Doc.Text()
+				}
+
+				attributes := make(commentAttributes)
+				if err := attributes.FromComments(documentation); err != nil {
+					log.Warning("directory: ", context.directory, ", package: ", context.pkg.Name, ", file: ", context.file.Name.Name, " request: ", structName, " - failed to extract attributes: ", err)
+					continue
+				} else if err := attributes.RequiredAttributes(RouteAttribute, MethodAttribute); err != nil {
+					log.Warning("directory: ", context.directory, ", package: ", context.pkg.Name, ", file: ", context.file.Name.Name, " request: ", structName, " - ", err)
+					continue
+				}
+
+				if err := context.parseStruct(structName, attributes, structType); err != nil {
+					log.Warning("directory: ", context.directory, ", package: ", context.pkg.Name, ", file: ", context.file.Name.Name, " request: ", structName, " - ", err)
+					continue
+				}
+			}
+
+			return true
+		})
 	}
 
-	var rootError error = nil
-
-	ast.Inspect(context.pkg, func(n ast.Node) bool {
-		switch n := n.(type) {
-		case *ast.GenDecl:
-			for _, spec := range n.Specs {
-				switch spec := spec.(type) {
-				case *ast.TypeSpec:
-					name := spec.Name.Name
-
-					switch spec := spec.Type.(type) {
-					case *ast.StructType:
-						data, ok := routesData[name]
-						if !ok {
-							if _, ok := context.structures[context.pkg.Name]; !ok {
-								context.structures[context.pkg.Name] = make(map[string]*ast.StructType)
-							}
-
-							context.structures[context.pkg.Name][name] = spec
-							continue
-						}
-
-						operation, err := context.openapi.Paths[data.Path].GetOperationByMethod(data.Method)
-						if err != nil {
-							continue
-						}
-
-						if err := context.parseHandlerStructFields(name, data, operation, spec); err != nil {
-							rootError = err
-							return false
-						}
-
-						continue
-					}
-				}
-			}
-		}
-
-		return true
-	})
-
-	return rootError
+	return nil
 }
 
-func (context *ParserContext) parseHandlerStructFields(structName string, data pathMethodTupple, operation *Operation, structType *ast.StructType) error {
+func (context *Context) parseStruct(name string, attributes commentAttributes, structType *ast.StructType) error {
+	route := attributes[RouteAttribute]
+	method := attributes[MethodAttribute]
+
+	if _, exists := context.OpenAPI.Paths[route]; !exists {
+		context.OpenAPI.Paths[route] = &Path{}
+	}
+
+	operation := &Operation{
+		Summary:     attributes.GetOrDefault(SummaryAttribute),
+		Description: attributes.GetOrDefault(DescriptionAttribute),
+		OperationId: attributes.GetOrDefault(OperationIdAttribute),
+		Deprecated:  attributes.HasKey(DeprecatedAttribute),
+		Tags:        parseStringByQuotesAndSpaces(attributes.GetOrDefault(TagsAttribute)),
+	}
+
 	for _, field := range structType.Fields.List {
-		if field.Names == nil || len(field.Names) == 0 {
-			// Probably an embedded field or something
+		if field.Names == nil {
+			// We are searching for the Body/Header/Query/Pat attributes.
 			continue
 		}
 
 		fieldName := field.Names[0].Name
 
-		attributes, err := extractAttributesFromComments(fieldName, field.Doc.Text())
-		if err != nil {
-			return errorWithLocation(structName, err)
-		}
-
-		fieldAsStruct, ok := field.Type.(*ast.StructType)
+		var err error
 
 		switch fieldName {
-		case BodyParam:
-			if err := context.parseBody(structName, data, operation, field, attributes); err != nil {
-				return errorWithLocation(structName, err)
-			}
+		case BodyField:
+			err = context.parseBody(operation, field)
 
-		case PathParam:
-			fallthrough
+		case HeaderField:
+			err = context.parseParameter(operation, "header", field)
 
-		case QueryParam:
-			fallthrough
+		case QueryField:
+			err = context.parseParameter(operation, "query", field)
 
-		case HeaderParam:
-			if !ok {
-				return errorInvalidType(structName, fieldName)
-			}
-
-			if err := context.parseParameters(structName, fieldName, data, operation, fieldAsStruct, attributes); err != nil {
-				return errorWithLocation(structName+"."+fieldName, err)
-			}
-
-		default:
-			f := func(data string) bool {
-				_, err := strconv.Atoi(data)
-				return err == nil
-			}
-
-			if strings.HasSuffix(fieldName, "Response") && attributes.IsKeyValid(ResponseAttribute, f) {
-				if err := context.parseResponses(structName, data, operation, field, attributes); err != nil {
-					return errorWithLocation(structName+"."+fieldName, err)
-				}
-			}
+		case PathField:
+			err = context.parseParameter(operation, "path", field)
 		}
 
+		if strings.HasSuffix(fieldName, ResponseFieldSuffix) {
+			err = context.parseResponse(operation, field)
+		}
+
+		if err != nil {
+			return wrapError(err, "failed to parse `%s`", fieldName)
+		}
+	}
+
+	if err := context.OpenAPI.Paths[route].SetOperationByMethod(method, operation); err != nil {
+		return wrapError(err, "route `%s`", route)
 	}
 
 	return nil
 }
 
-func (context *ParserContext) parseHandlerStructComments(name string, comments string) (string, string, error) {
-	attributes, err := extractAttributesFromComments(name, comments)
-	if err != nil {
-		return "", "", err
+func (context *Context) parseBody(operation *Operation, field *ast.Field) error {
+	t := context.pkg.TypesInfo.TypeOf(field.Type)
+	if t == nil {
+		return TypeNotFoundError{TypeName: types.ExprString(field.Type)}
 	}
 
-	route, exists := attributes[RouteAttribute]
-	if !exists {
-		return "", "", errorMissingAttribute(name, RouteAttribute)
-	} else if route == "" {
-		return "", "", errorInvalidAttributeValue(name, RouteAttribute, route)
-	}
-
-	method, exists := attributes[MethodAttribute]
-	if !exists {
-		return "", "", errorMissingAttribute(name, MethodAttribute)
-	}
-
-	summary := attributes.GetValueOrDefault(SummaryAttribute)
-	description := attributes.GetValueOrDefault(DescriptionAttribute)
-	operationId := attributes.GetValueOrDefault(OperationIdAttribute)
-	deprecated := attributes.HasKey(DeprecatedAttribute)
-
-	tagsValue := attributes.GetValueOrDefault(TagsAttribute)
-	tags := []string{}
-	if tagsValue != "" {
-		tags = parseStringByQuotesAndSpaces(tagsValue)
-	}
-
-	path, exists := context.openapi.Paths[route]
-	if exists {
-		operation, err := path.GetOperationByMethod(method)
-		if err != nil {
-			return "", "", err
-		} else if operation != nil {
-			return "", "", errorDuplicateOperation(name, method)
-		}
-	} else {
-		path = &Path{}
-	}
-
-	operation := Operation{
-		Summary:     summary,
-		Description: description,
-		OperationId: operationId,
-		Deprecated:  deprecated,
-		Tags:        tags,
-		Responses:   map[string]Response{},
-	}
-
-	if err := path.SetOperationByMethod(method, &operation); err != nil {
-		return "", "", err
-	}
-
-	context.openapi.Paths[route] = path
-	return route, method, nil
-}
-
-func (context *ParserContext) parseBody(structName string, data pathMethodTupple, operation *Operation, field *ast.Field, attributes attributes) error {
-	property, err := context.extractPropertyFromField(field, JsonTag)
+	property, err := context.parseProperty(t, JsonTag)
 	if err != nil {
 		return err
 	}
 
-	operation.RequestBody.Required = attributes.HasKey(RequiredAttribute)
-	operation.RequestBody.Description = attributes.GetValueOrDefault(DescriptionAttribute)
-	operation.RequestBody.Content = map[string]MediaType{
-		ContentTypeJson: {
-			Schema: Schema{
-				Property:   property,
-				Nullable:   attributes.HasKey(NullableAttribute),
-				Deprecated: attributes.HasKey(DeprecatedAttribute),
-			},
-		},
+	attributes := make(commentAttributes)
+	if err := attributes.FromComments(field.Doc.Text()); err != nil {
+		return wrapError(err, "failed to extract attributes")
 	}
 
-	return nil
-}
+	property.Description = attributes.GetOrDefault(DescriptionAttribute)
+	property.Required = attributes.HasKey(RequiredAttribute)
 
-func (context *ParserContext) parseParameters(structName string, paramName string, data pathMethodTupple, operation *Operation, structType *ast.StructType, attributes attributes) error {
-	for _, field := range structType.Fields.List {
-		fieldName := ""
-		if field.Names != nil && len(field.Names) > 0 {
-			fieldName = field.Names[0].Name
-		}
-
-		serializeName := fieldName
-
-		if field.Tag != nil {
-			tags, err := structtag.Parse(field.Tag.Value[1 : len(field.Tag.Value)-1])
-			if err != nil {
-				return errorWithLocation(structName+"."+paramName+"."+fieldName, err)
-			}
-
-			if tag, err := tags.Get(BinderTag); err == nil {
-				serializeName = tag.Name
-			}
-		}
-
-		if serializeName == "" {
-			// The field doesn't have a valid name
-			continue
-		}
-
-		nestedFieldAttributes, err := extractAttributesFromComments(fieldName, field.Doc.Text())
-		if err != nil {
-			return errorWithLocation(structName+"."+fieldName, err)
-		}
-
-		if paramName == PathParam {
-			nestedFieldAttributes[RequiredAttribute] = "true"
-		}
-
-		operation.Parameters = append(operation.Parameters, Parameter{
-			Name:        serializeName,
-			Description: nestedFieldAttributes.GetValueOrDefault(DescriptionAttribute),
-			Required:    nestedFieldAttributes.HasKey(RequiredAttribute),
-			Deprecated:  nestedFieldAttributes.HasKey(DeprecatedAttribute),
-			In:          strings.ToLower(paramName),
-			Schema: Schema{
-				// There is no need to use extractPropertyFromField because params can not be objects,
-				// only primitives and arrays of primitives.
-				Property: propertyFromLiteralType(types.ExprString(field.Type)),
-			},
-		})
-
-	}
-
-	return nil
-}
-
-func (context *ParserContext) parseResponses(structName string, data pathMethodTupple, operation *Operation, field *ast.Field, attributes attributes) error {
-	property, err := context.extractPropertyFromField(field, JsonTag)
-	if err != nil {
-		return err
-	}
-
-	description, exists := attributes[DescriptionAttribute]
-	if !exists {
-		return errorMissingDescription(structName)
-	}
-
-	status := attributes.GetValueOrDefault(ResponseAttribute)
-	operation.Responses[status] = Response{
-		Description: description,
+	operation.RequestBody = RequestBody{
 		Content: map[string]MediaType{
 			ContentTypeJson: {
 				Schema: Schema{
-					Property: property,
+					Property: *property,
 				},
 			},
 		},
 	}
+
 	return nil
 }
 
-func (context *ParserContext) extractPropertyFromArray(property *Property, arrayType string, tag string) error {
-	itemProperty, ok := property.Items.(Property)
-	if !ok {
-		return nil
+func (context *Context) parseParameter(operation *Operation, in ParameterLocation, field *ast.Field) error {
+	t := context.pkg.TypesInfo.TypeOf(field.Type)
+	if t == nil {
+		return TypeNotFoundError{TypeName: types.ExprString(field.Type)}
 	}
 
-	if itemProperty.Type == PropertyType_Array {
-		if err := context.extractPropertyFromArray(&itemProperty, arrayType[2:], tag); err != nil {
-			return err
+	structType, ok := t.Underlying().(*types.Struct)
+	if !ok {
+		return UnsupportedTypeError{ExpectedType: "struct", ActualType: t.Underlying().String()}
+	}
+
+	for fieldIndex := 0; fieldIndex < structType.NumFields(); fieldIndex++ {
+		field := structType.Field(fieldIndex)
+		fieldTag := structType.Tag(fieldIndex)
+
+		// Check if the field is embedded.
+		// Only embedded fields that are structures are allowed
+		if field.Embedded() {
+			_, ok := field.Type().Underlying().(*types.Struct)
+			if !ok {
+				return UnsupportedTypeError{ExpectedType: "struct", ActualType: t.Underlying().String(), Embedded: true}
+			}
+
+			embeddedProperty, err := context.parseProperty(field.Type(), BinderTag)
+			if err != nil {
+				return wrapError(err, "failed to parse embedded field", field.Type().Underlying().String())
+			}
+
+			for _, property := range embeddedProperty.Properties {
+				operation.AddParameter(in, &Parameter{
+					Name:     property.Name,
+					Required: property.Required,
+					Schema: Schema{
+						Property: property,
+					},
+				})
+			}
+
+			continue
 		}
 
-		property.Items = itemProperty
-		return nil
-	} else if itemProperty.Type != PropertyType_Object {
-		return nil
+		fieldProperty, err := context.parseProperty(field.Type(), BinderTag)
+		if err != nil {
+			return wrapError(err, "failed to parse field `%s`", field.Name())
+		}
+
+		if err := fieldProperty.ParseTags(fieldTag, BinderTag, field.Name()); err != nil {
+			return wrapError(err, "failed to parse field `%s` tags", field.Name())
+		}
+
+		if fieldProperty.Type == PropertyType_None || fieldProperty.Type == PropertyType_Map || fieldProperty.Type == PropertyType_Object {
+			return UnsupportedTypeError{ExpectedType: "primitive/slice of primitives", ActualType: field.Type().String()}
+		} else if in != "query" && fieldProperty.Type == PropertyType_Array {
+			return UnsupportedTypeError{ExpectedType: "primitives", ActualType: field.Type().String()}
+		}
+
+		if in == "path" {
+			fieldProperty.Required = true
+		}
+
+		// Add the parameter to the operation
+		operation.AddParameter(in, &Parameter{
+			Name:     fieldProperty.Name,
+			Required: fieldProperty.Required,
+			Schema: Schema{
+				Property: *fieldProperty,
+			},
+		})
 	}
 
-	// If it is a declared or embedded struct, then we need to extract it from the structs map
-	pkg, name := getPackageAndTypeNameOfExpressionString(arrayType[2:])
-	if pkg == "" {
-		pkg = context.pkg.Name
+	return nil
+}
+
+func (context *Context) parseResponse(operation *Operation, field *ast.Field) error {
+	t := context.pkg.TypesInfo.TypeOf(field.Type)
+	if t == nil {
+		return TypeNotFoundError{TypeName: types.ExprString(field.Type)}
 	}
 
-	structType, err := context.getStructTypeByPackageAndName(pkg, name)
+	attributes := make(commentAttributes)
+	if err := attributes.FromComments(field.Doc.Text()); err != nil {
+		return wrapError(err, "failed to extract attributes")
+	} else if err := attributes.RequiredAttributes(ResponseAttribute, DescriptionAttribute); err != nil {
+		return err
+	}
+
+	property, err := context.parseProperty(t, JsonTag)
 	if err != nil {
 		return err
 	}
 
-	if err := context.extractPropertyFromStruct(&itemProperty, "", structType, tag); err != nil {
+	property.Description = attributes[DescriptionAttribute]
+	response := Response{
+		Description: attributes[DescriptionAttribute],
+		Content: map[string]MediaType{
+			ContentTypeJson: {
+				Schema: Schema{
+					Property: *property,
+				},
+			},
+		},
+	}
+
+	if err = operation.AddResponse(attributes[ResponseAttribute], &response); err != nil {
 		return err
 	}
 
-	property.Items = itemProperty
 	return nil
 }
 
-func (context *ParserContext) extractPropertyFromStruct(property *Property, structName string, structType *ast.StructType, tag string) error {
-	property.Properties = make(map[string]Property)
+func (context *Context) parseProperty(t types.Type, tag string) (*Property, error) {
+	property := Property{}
 
-	for _, field := range structType.Fields.List {
-		fieldProperty, err := context.extractPropertyFromField(field, tag)
+	switch t := t.Underlying().(type) {
+	case *types.Basic:
+		property.Type, property.Format = typeAndFormatFromKind(t.Kind())
+
+	case *types.Slice:
+		property.Type = PropertyType_Array
+
+		items, err := context.parseProperty(t.Elem(), tag)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		fieldName := getFieldName(field, tag)
-		fieldType := getFieldType(field)
+		property.Items = *items
 
-		if fieldProperty.Type != PropertyType_Object && fieldType == fieldType_Embedded {
-			// If it is not an object and it is embedded, the type is invalid
-			return errorInvalidEmbeddedType(structName)
-		} else if fieldProperty.Type != PropertyType_Object && fieldType != fieldType_Embedded {
-			// If it is not an object, and it is not an embedded struct, then let's add it to the properties
-			property.Properties[fieldName] = fieldProperty.fixType()
+	case *types.Array:
+		property.Type = PropertyType_Array
 
-			if fieldProperty.Required {
-				property.RequiredProperties = append(property.RequiredProperties, fieldName)
-			}
-
-			continue
-		} else if fieldType == fieldType_InlineStruct {
-			if err := context.extractPropertyFromStruct(&fieldProperty, field.Names[0].Name, field.Type.(*ast.StructType), tag); err != nil {
-				return errorWithLocation(structName+"."+fieldName, err)
-			}
-
-			property.Properties[fieldName] = fieldProperty.fixType()
-
-			if fieldProperty.Required {
-				property.RequiredProperties = append(property.RequiredProperties, fieldName)
-			}
-
-			continue
-		}
-
-		// If it is a declared or embedded struct, then we need to extract it from the structs map
-		pkg, name := getPackageAndTypeNameOfExpression(field.Type)
-		if pkg == "" {
-			pkg = context.pkg.Name
-		}
-
-		structType, err := context.getStructTypeByPackageAndName(pkg, name)
+		items, err := context.parseProperty(t.Elem(), tag)
 		if err != nil {
-			return err
+			return nil, err
+		} else if items == nil {
+			return nil, nil
 		}
 
-		if err := context.extractPropertyFromStruct(&fieldProperty, fieldName, structType, tag); err != nil {
-			return err
-		}
+		property.Items = items
 
-		if fieldType == fieldType_Embedded {
-			for key, value := range fieldProperty.Properties {
-				property.Properties[key] = value.fixType()
+	case *types.Struct:
+		property.Type = PropertyType_Object
+		property.Properties = make(map[string]Property)
 
-				if value.Required {
-					property.RequiredProperties = append(property.RequiredProperties, key)
+		for fieldIndex := 0; fieldIndex < t.NumFields(); fieldIndex++ {
+			field := t.Field(fieldIndex)
+			fieldTag := t.Tag(fieldIndex)
+
+			fieldProperty, err := context.parseProperty(field.Type(), tag)
+			if err != nil {
+				return nil, wrapError(err, "failed to parse field `%s`", field.Name())
+			} else if fieldProperty == nil {
+				continue
+			} else if err := fieldProperty.ParseTags(fieldTag, tag, field.Name()); err != nil {
+				return nil, wrapError(err, "failed to parse field `%s` tags", field.Name())
+			}
+
+			if field.Anonymous() {
+				for name, fieldProperty := range fieldProperty.Properties {
+					property.Properties[name] = fieldProperty
+
+					if fieldProperty.Required {
+						property.RequiredProperties = append(property.RequiredProperties, name)
+					}
+				}
+			} else {
+				property.Properties[fieldProperty.Name] = *fieldProperty
+
+				if fieldProperty.Required {
+					property.RequiredProperties = append(property.RequiredProperties, fieldProperty.Name)
 				}
 			}
-		} else if fieldType == fieldType_Declared {
-			property.Properties[fieldName] = fieldProperty.fixType()
-
-			if fieldProperty.Required {
-				property.RequiredProperties = append(property.RequiredProperties, fieldName)
-			}
-		}
-	}
-
-	return nil
-}
-
-func (context *ParserContext) extractPropertyFromField(field *ast.Field, tag string) (Property, error) {
-	property := propertyFromLiteralType(types.ExprString(field.Type))
-	fieldName := ""
-	if field.Names != nil && len(field.Names) > 0 {
-		fieldName = field.Names[0].Name
-	}
-
-	fieldAttributes, err := extractAttributesFromComments(fieldName, field.Doc.Text())
-	if err != nil {
-		return property, err
-	}
-
-	property.Description = fieldAttributes.GetValueOrDefault(DescriptionAttribute)
-	property.Required = fieldAttributes.HasKey(RequiredAttribute)
-
-	if field.Tag != nil && field.Tag.Value != "" {
-		tags, err := structtag.Parse(field.Tag.Value[1 : len(field.Tag.Value)-1])
-		if err != nil {
-			return property, errorWithLocation(fieldName, err)
 		}
 
-		actualTag, err := tags.Get(ValidateTag)
-		if err == nil && actualTag.Name == ValidateRequiredValue {
-			property.Required = true
-		}
+	case *types.Map:
+		property.Type = PropertyType_Map
+
+	default:
+		// Invalid type, return no property but also no error.
+		return nil, nil
 	}
 
-	if property.Type == PropertyType_Array {
-		if err := context.extractPropertyFromArray(&property, types.ExprString(field.Type), tag); err != nil {
-			return property, errorWithLocation(fieldName, err)
-		}
-
-		return property, nil
-	}
-
-	structType, ok := field.Type.(*ast.StructType)
-	if !ok || structType == nil || structType.Fields == nil || structType.Fields.List == nil {
-		return property, nil
-	}
-
-	if err := context.extractPropertyFromStruct(&property, fieldName, structType, tag); err != nil {
-		return property, err
-	}
-
-	property.fixType()
-	return property, nil
-}
-
-func (context *ParserContext) getStructTypeByPackageAndName(pkg string, name string) (*ast.StructType, error) {
-	if _, ok := context.structures[pkg]; !ok {
-		return nil, errorUnfoundPackage(pkg)
-	}
-
-	structType, ok := context.structures[pkg][name]
-	if !ok {
-		return nil, errorUnfoundStructInPackage(pkg, name)
-	}
-
-	return structType, nil
+	return &property, nil
 }

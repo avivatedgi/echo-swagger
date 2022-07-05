@@ -1,51 +1,102 @@
 package echo_swagger
 
-import "fmt"
+import (
+	"fmt"
+)
 
-func errorDuplicateAttribute(location, attribute string) error {
-	return fmt.Errorf("duplicate attribute `%s` in `%s`", attribute, location)
+type AttributeError struct {
+	AttributeName string
 }
 
-func errorInvalidAttributeValue(location, attribute, value string) error {
-	return fmt.Errorf("invalid attribute value for `%s` in `%s`: `%s`", attribute, location, value)
+// An error that returned whenever there is a duplicate attribute in a handler documentation
+type DuplicateAttributeError struct {
+	AttributeError
 }
 
-func errorMissingAttribute(location, attribute string) error {
-	return fmt.Errorf("missing attribute `%s` in `%s`", attribute, location)
+func (e DuplicateAttributeError) Error() string {
+	return fmt.Sprintf("duplicate attribute `%s`", e.AttributeName)
 }
 
-func errorDuplicateOperation(location, operation string) error {
-	return fmt.Errorf("duplicate method `%s` in `%s`", operation, location)
+// An error that returned whenever there is an attribute with invalid value in a handler documentation
+type InvalidAttributeValueError struct {
+	AttributeError
+	Value string
 }
 
-func errorInvalidMethod(method string) error {
-	return fmt.Errorf("invalid method `%s`", method)
+func (e InvalidAttributeValueError) Error() string {
+	return fmt.Sprintf("invalid attribute value for `%s`: `%s`", e.AttributeName, e.Value)
 }
 
-func errorInvalidType(location, attribute string) error {
-	return fmt.Errorf("the `%s` attribute in `%s` must be of type `struct`", attribute, location)
+// An error that returned whenever there is a required attribute that is missing in a handler documentation
+type MissingAttributeError struct {
+	AttributeError
 }
 
-func errorWithLocation(location string, err error) error {
-	return fmt.Errorf("%s: %s", location, err)
+func (e MissingAttributeError) Error() string {
+	return fmt.Sprintf("missing attribute `%s`", e.AttributeName)
 }
 
-func errorWithPackageFile(pkg string, err error) error {
-	return fmt.Errorf("error in package %s: %s", pkg, err.Error())
+// An error that returned whenever there is a two handlers (or more) with the exactly same path and method
+type DuplicateMethodError struct {
+	Method string
 }
 
-func errorUnfoundPackage(pkg string) error {
-	return fmt.Errorf("unfound package `%s`", pkg)
+func (e DuplicateMethodError) Error() string {
+	return fmt.Sprintf("duplicate method `%s`", e.Method)
 }
 
-func errorUnfoundStructInPackage(pkg string, structure string) error {
-	return fmt.Errorf("unfound struct `%s` in package `%s`", structure, pkg)
+// An error that returned whenever there is a handler with an invalid method
+type InvalidMethodError struct {
+	Method string
 }
 
-func errorInvalidEmbeddedType(location string) error {
-	return fmt.Errorf("can not embed a non-struct type in a struct (%s)", location)
+func (e InvalidMethodError) Error() string {
+	return fmt.Sprintf("invalid method `%s`", e.Method)
 }
 
-func errorMissingDescription(location string) error {
-	return fmt.Errorf("missing description in `%s`", location)
+// An invalid type error that is returned whenever there is a invalid primitive type found
+type InvalidPrimitiveTypeError struct {
+	TypeName string
+}
+
+func (e InvalidPrimitiveTypeError) Error() string {
+	return fmt.Sprintf("invalid primitive type `%s`", e.TypeName)
+}
+
+// An error that returned whenever the type could not be found
+type TypeNotFoundError struct {
+	TypeName string
+}
+
+func (e TypeNotFoundError) Error() string {
+	return fmt.Sprintf("type `%s` not found", e.TypeName)
+}
+
+// An error that returned whenever the type is not supported
+type UnsupportedTypeError struct {
+	ExpectedType string
+	ActualType   string
+	Embedded     bool
+}
+
+func (e UnsupportedTypeError) Error() string {
+	embedded := ""
+	if e.Embedded {
+		embedded = "embedded "
+	}
+
+	return fmt.Sprintf("expected %stype `%s` but got `%s`", embedded, e.ExpectedType, e.ActualType)
+}
+
+// An error that returned whenever there is a duplicate response in a request handler.
+type DuplicateResponseError struct {
+	StatusCode string
+}
+
+func (e DuplicateResponseError) Error() string {
+	return fmt.Sprintf("duplicate response `%s`", e.StatusCode)
+}
+
+func wrapError(err error, message string, args ...interface{}) error {
+	return fmt.Errorf(message+": %w", append(args, err)...)
 }

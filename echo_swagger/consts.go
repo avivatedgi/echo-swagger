@@ -1,7 +1,6 @@
 package echo_swagger
 
 const (
-	NullableAttribute    = "nullable"
 	RequiredAttribute    = "required"
 	DescriptionAttribute = "description"
 	DeprecatedAttribute  = "deprecated"
@@ -17,11 +16,11 @@ const (
 	ValidateTag           = "validate"
 	ValidateRequiredValue = "required"
 
-	ResponseParam = "Response"
-	PathParam     = "Path"
-	BodyParam     = "Body"
-	HeaderParam   = "Header"
-	QueryParam    = "Query"
+	ResponseFieldSuffix = "Response"
+	PathField           = "Path"
+	BodyField           = "Body"
+	HeaderField         = "Header"
+	QueryField          = "Query"
 
 	OpenApiVersion = "3.0.0"
 

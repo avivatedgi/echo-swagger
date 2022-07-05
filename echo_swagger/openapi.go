@@ -1,6 +1,12 @@
 package echo_swagger
 
-import "strings"
+import (
+	"fmt"
+	"go/types"
+	"strings"
+
+	"github.com/fatih/structtag"
+)
 
 // This is the root document object of the OpenAPI document.
 type OpenAPI struct {
@@ -164,11 +170,18 @@ func (p *Path) GetOperationByMethod(method string) (*Operation, error) {
 		return p.Trace, nil
 
 	default:
-		return nil, errorInvalidMethod(method)
+		return nil, InvalidMethodError{Method: method}
 	}
 }
 
 func (p *Path) SetOperationByMethod(method string, operation *Operation) error {
+	currentOperation, err := p.GetOperationByMethod(method)
+	if err != nil {
+		return err
+	} else if currentOperation != nil {
+		return DuplicateMethodError{Method: method}
+	}
+
 	switch strings.ToUpper(method) {
 	case "GET":
 		p.Get = operation
@@ -203,7 +216,7 @@ func (p *Path) SetOperationByMethod(method string, operation *Operation) error {
 		return nil
 
 	default:
-		return errorInvalidMethod(method)
+		return InvalidMethodError{Method: method}
 	}
 }
 
@@ -246,6 +259,32 @@ type Operation struct {
 	Servers []Server `yaml:"servers,omitempty"`
 }
 
+func (operation *Operation) AddParameter(in ParameterLocation, parameter *Parameter) error {
+	parameter.SetLocation(in)
+	operation.Parameters = append(operation.Parameters, *parameter)
+	return nil
+}
+
+func (operation *Operation) AddResponse(code string, response *Response) error {
+	if operation.Responses == nil {
+		operation.Responses = make(map[string]Response)
+	} else if _, ok := operation.Responses[code]; ok {
+		return DuplicateResponseError{StatusCode: code}
+	}
+
+	operation.Responses[code] = *response
+	return nil
+}
+
+type ParameterLocation string
+
+const (
+	ParameterLocationQuery  ParameterLocation = "query"
+	ParameterLocationHeader ParameterLocation = "header"
+	ParameterLocationCookie ParameterLocation = "cookie"
+	ParameterLocationPath   ParameterLocation = "path"
+)
+
 // Describes a single operation parameter.
 // A unique parameter is defined by a combination of a name and location.
 //
@@ -272,7 +311,7 @@ type Parameter struct {
 	Name string `yaml:"name,omitempty"`
 
 	// REQUIRED. The location of the parameter. Possible values are "query", "header", "path" or "cookie".
-	In string `yaml:"in,omitempty" validate:"oneof=query header path cookie"`
+	In ParameterLocation `yaml:"in,omitempty" validate:"oneof=query header path cookie"`
 
 	// A brief description of the parameter. This could contain examples of use. CommonMark syntax MAY be used for rich text representation.
 	Description string `yaml:"description,omitempty"`
@@ -288,6 +327,14 @@ type Parameter struct {
 
 	// The schema defining the content of the request parameter.
 	Schema Schema `yaml:"schema,omitempty"`
+}
+
+func (parameter *Parameter) SetLocation(location ParameterLocation) {
+	parameter.In = location
+
+	if location == ParameterLocationPath {
+		parameter.Required = true
+	}
 }
 
 // Allows referencing an external resource for extended documentation.
@@ -339,7 +386,7 @@ const (
 	PropertyType_Boolean PropertyType = "boolean"
 	PropertyType_Array   PropertyType = "array"
 	PropertyType_Object  PropertyType = "object"
-	PropertyType_Map     PropertyType = "object2"
+	PropertyType_Map     PropertyType = "object"
 )
 
 type PropertyFormat string
@@ -356,65 +403,52 @@ const (
 	PropertyFormat_DateTime PropertyFormat = "date-time"
 )
 
-func propertyFromLiteralType(t string) Property {
-	propertyType := PropertyType_None
-	propertyFormat := PropertyFormat_None
+func typeAndFormatFromKind(kind types.BasicKind) (PropertyType, PropertyFormat) {
+	switch kind {
+	case types.Bool:
+		return PropertyType_Boolean, PropertyFormat_None
 
-	switch t {
-	case "int":
-		propertyType = PropertyType_Integer
-	case "int8":
-		propertyType = PropertyType_Integer
-	case "int16":
-		propertyType = PropertyType_Integer
-	case "int32":
-		propertyType = PropertyType_Integer
-		propertyFormat = PropertyFormat_Int32
-	case "int64":
-		propertyType = PropertyType_Integer
-		propertyFormat = PropertyFormat_Int64
-	case "uint":
-		propertyType = PropertyType_Number
-	case "uint8":
-		propertyType = PropertyType_Number
-	case "uint16":
-		propertyType = PropertyType_Number
-	case "uint32":
-		propertyType = PropertyType_Number
-	case "uint64":
-		propertyType = PropertyType_Number
-	case "float32":
-		propertyType = PropertyType_Number
-		propertyFormat = PropertyFormat_Float
-	case "float64":
-		propertyType = PropertyType_Number
-		propertyFormat = PropertyFormat_Double
-	case "string":
-		propertyType = PropertyType_String
-	case "bool":
-		propertyType = PropertyType_Boolean
-	case "time.Time":
-		propertyType = PropertyType_String
-		propertyFormat = PropertyFormat_DateTime
+	case types.Int:
+		return PropertyType_Integer, PropertyFormat_None
+
+	case types.Int8:
+		return PropertyType_Integer, PropertyFormat_None
+
+	case types.Int16:
+		return PropertyType_Integer, PropertyFormat_None
+
+	case types.Int32:
+		return PropertyType_Integer, PropertyFormat_Int32
+
+	case types.Int64:
+		return PropertyType_Integer, PropertyFormat_Int64
+
+	case types.Uint:
+		return PropertyType_Number, PropertyFormat_None
+
+	case types.Uint8:
+		return PropertyType_Number, PropertyFormat_None
+
+	case types.Uint16:
+		return PropertyType_Number, PropertyFormat_None
+
+	case types.Uint32:
+		return PropertyType_Number, PropertyFormat_None
+
+	case types.Uint64:
+		return PropertyType_Number, PropertyFormat_None
+
+	case types.Float32:
+		return PropertyType_Number, PropertyFormat_Float
+
+	case types.Float64:
+		return PropertyType_Number, PropertyFormat_Double
+
+	case types.String:
+		return PropertyType_String, PropertyFormat_None
 	}
 
-	if strings.HasPrefix(t, "map[") {
-		propertyType = PropertyType_Map
-	} else if strings.HasPrefix(t, "[]") {
-		return Property{
-			Type:   PropertyType_Array,
-			Format: PropertyFormat_None,
-			Items:  propertyFromLiteralType(t[2:]),
-		}
-	} else if propertyType == PropertyType_None {
-		// Didn't found anything, it's probablly object
-		propertyType = PropertyType_Object
-	}
-
-	return Property{
-		Type:   propertyType,
-		Format: propertyFormat,
-	}
+	return PropertyType_None, PropertyFormat_None
 }
 
 type Property struct {
@@ -439,14 +473,52 @@ type Property struct {
 	// Specifies the items of the array if the property type is "array".
 	// It's must be of type interface{} because Items is actually a property.
 	Items interface{} `yaml:"items,omitempty"`
+
+	// Used for internal use
+	Name string `yaml:"-"`
 }
 
-func (p *Property) fixType() Property {
-	if p.Type == PropertyType_Map {
-		p.Type = PropertyType_Object
+func (p Property) String() string {
+	switch p.Type {
+	case PropertyType_Array:
+		return fmt.Sprintf("[]%v", p.Items.(Property).String())
+
+	case PropertyType_Object:
+		data := "object ("
+		for k, v := range p.Properties {
+			data += fmt.Sprintf("%v: %v | ", k, v.String())
+		}
+		data += ")"
+		return data
+
+	default:
+		return string(p.Type)
+	}
+}
+
+func (p *Property) ParseTags(data string, nameTag string, fieldName string) error {
+	p.Name = fieldName
+
+	if data == "" {
+		return nil
 	}
 
-	return *p
+	tags, err := structtag.Parse(data)
+	if err != nil {
+		return err
+	}
+
+	name, err := tags.Get(nameTag)
+	if err == nil {
+		p.Name = name.Name
+	}
+
+	required, err := tags.Get(ValidateTag)
+	if err == nil && required.Name == ValidateRequiredValue {
+		p.Required = true
+	}
+
+	return nil
 }
 
 // The Schema Object allows the definition of input and output data types. These types can be objects, but also primitives and arrays. This object is an extended subset of the JSON Schema Specification Wright Draft 00.

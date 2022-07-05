@@ -2,7 +2,7 @@
 
 A OpenAPI generator for the [Echo](https://echo.labstack.com/) web framework that works **ONLY** with the [echo-binder](https://github.com/avivatedgi/echo-binder). The reason that it only works with the echo-binder is because it matches the binder work pattern.
 
-This generator is a tool that parse Golang files from given directories, check for the echo-binder structures pattern, parse the structures and their documentation and returns an `OpenAPI` object with the full data needed.
+This generator is a tool that parse Golang files from given directory, check for the echo-binder structures pattern, parse the structures and their documentation and returns an `OpenAPI` object with the full data needed.
 
 ## Usage
 
@@ -19,13 +19,14 @@ get get -u github.com/avivatedgi/echo-swagger
 Example:
 
 ```bash
-./echo-swagger --info my_info.yaml --dir package_a/ --dir package_b/ --dir package_c/ --out openapi.yaml
+./echo-swagger --info my_info.yaml --dir package/ --patern ./... --out openapi.yaml
 ```
 
 Options:
 
-* `--dir` Are the directories you want to parse from the OpenAPI handlers
-* `--out` Is the output file to write into the OpenAPI scheme
+* `--dir` Is the directory you want to parse from the OpenAPI specifications
+* `--pattern` The pattern to scan with the packages (default: `./...`)
+* `--out` Is the output file to write into the OpenAPI scheme (default: `stdout`)
 * `--info` Is the path to the OpenAPI info file
 
 ### Info File Example
@@ -46,7 +47,7 @@ version: "1.0"
 
 ### Format
 
-The structure format is exactly as described in the [echo-binder](https://github.com/avivatedgi/echo-binder) documentation, but it has an extra thing: A `Handle` method and documentation attributes (starting with `@`).
+The structure format is exactly as described in the [echo-binder](https://github.com/avivatedgi/echo-binder) documentation, but it has an extra thing: documentation attributes (starting with `@`).
 
 <details>
   <summary>Full Example</summary>
@@ -68,27 +69,23 @@ type CommonResponse struct {
 // A description can also be multi-line.
 // This route update the user by it's id.
 // @operationId update-user-by-id
-// @tags Users
+// @tags "First Tag" SecondTag
 type UpdateUserById struct {
-    // @description The body description
     Body struct {
-        // @description The username description, will be also required because of
-        // the go-playground/validator validate required tag.
+        // will be required because of the go-playground/validator validate required tag.
         Username string `json:"username" validate:"required"`
     }
 
     Header struct {
+        // will embed the `CommonHeader` fields
         CommonHeader
     }
 
     Path struct {
-        // @description The id path param, required by default.
         Id string `binder:"id"`
     }
 
     Query struct {
-        // @description The age of the user
-        // @required
         Age int `binder:"age"`
     }
 
@@ -103,10 +100,6 @@ type UpdateUserById struct {
     BadRequestResponse struct {
         CommonResponse
     }
-}
-
-func (s *UpdateUserById) Handle(c echo.Context) error {
-    return nil
 }
 ```
 
@@ -145,37 +138,19 @@ type UpdateUserById struct {}
 
 #### Parameter Attributes
 
-Parameters meaning is all the parameters that are related to the `Body`, `Path`, `Query` and `Header`.
-
-* `@description` - A brief description of the parameter. This could contain examples of use. CommonMark syntax MAY be used for rich text representation.
-* `@required` - Determines whether this parameter is mandatory. If the parameter location is "path", this property is automatically sets to true. Also, if the field has a `validate:"required"` tag (as in the [validator](https://github.com/go-playground/validator) package) it automatically sets to true.
+Parameters meaning is all the parameters that are related to the `Body`, `Path`, `Query` and `Header`. Currently, the only supported attribute is `required` and it is only valid through the `validate:"required"` tag.
 
 <details>
   <summary>Example</summary>
 
   ```go
-  // @route /example/{id}
+  // @route /example
   // @method PUT
   type Example struct {
-    Path struct {
-        // This field will be required by default because it is a path field.
-        Id string `binder:"id"`
-    }
-
-    Header struct {
-        // This field will be required because of the required tag.
-        // @required
-        AcceptLanguage string `binder:"Accept-Language"`
-    }
-
     Query struct {
         // This field will be required because of the validate:"required" tag.
         Page int `binder:"page" validate:"required"`
     }
-  }
-
-  func (e *Example) Handle(c echo.Context) error {
-    return nil
   }
   ```
 
@@ -210,41 +185,6 @@ A response is any struct in a request handler struct that ends with `Response` a
 
 </details>
 
-## Notes
+## TODO
 
-* Make sure you pass the packages which in you declare the types you are using in your routes before the routes package. For example:
-
-In the file `one-package/types.go` we declare the `CommonHeader` and `CommonQuery` structures:
-
-```go
-package one_package
-
-type CommonHeader struct {
-    AcceptVersion   string `binder:"Accept-Version"`
-    AcceptLanguage  string `binder:"Accept-Language"`
-}
-
-type CommonQuery struct {
-    Page    int `binder:"page"`
-    Amount  int `binder:"amount"`
-}
-```
-
-And in the file `another-package/routes.go` we declare a `MyRequest` struct who uses both `one_package.CommonHeader` and `one_package.CommonQuery`:
-
-```go
-package another_package
-
-// All the needed documentation
-type MyRequest struct {
-    Header struct {
-        one_package.CommonHeader
-    }
-
-    Query struct {
-        one_package.CommonQuery
-    }
-}
-```
-
-So for `another_package` to identify those structures, you must first pass `one-package/` directory and only after `another-package/`.
+* [ ] Add support for adding attributes for fields
