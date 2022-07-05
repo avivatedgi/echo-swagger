@@ -11,7 +11,7 @@ This generator is a tool that parse Golang files from given directory, check for
 Download [echo-swagger](https://github.com/avivatedgi/echo-swagger) by using:
 
 ```bash
-get get -u github.com/avivatedgi/echo-swagger
+go install github.com/avivatedgi/echo-swagger@latest
 ```
 
 ### How To Use
@@ -19,7 +19,7 @@ get get -u github.com/avivatedgi/echo-swagger
 Example:
 
 ```bash
-./echo-swagger --info my_info.yaml --dir package/ --patern ./... --out openapi.yaml
+echo-swagger --info my_info.yaml --dir package/ --patern ./... --out openapi.yaml
 ```
 
 Options:
