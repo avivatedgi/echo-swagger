@@ -345,9 +345,11 @@ func (context *Context) parseProperty(t types.Type, tag string) (*Property, erro
 		items, err := context.parseProperty(t.Elem(), tag)
 		if err != nil {
 			return nil, err
+		} else if items == nil {
+			return nil, nil
 		}
 
-		property.Items = *items
+		property.Items = items
 
 	case *types.Array:
 		property.Type = PropertyType_Array
