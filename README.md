@@ -270,6 +270,10 @@ A response is any struct in a request handler struct that ends with `Response` a
 
 </details>
 
+## Notes
+
+* Fields with the appropiate `-` value under the specified tag (`binder` for parameters, `json` for body & responses) will be ignored.
+
 ## TODO
 
 * [ ] Add support for adding attributes for fields

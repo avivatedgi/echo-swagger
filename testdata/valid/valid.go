@@ -34,20 +34,38 @@ type Users []User
 type ExampleRequest struct {
 	Body struct {
 		CommonBody
-		Users Users `json:"users" validate:"required"`
+		Users  Users  `json:"users" validate:"required"`
+		Unused string `json:"-"`
 	}
 
 	Path struct {
 		CommonPath
+		Unused string `binder:"-"`
 	}
 
 	Query struct {
 		CommonQuery
-		Types []string `binder:"types" validate:"required"`
+		Types  []string `binder:"types" validate:"required"`
+		Unused string   `binder:"-"`
 	}
 
 	Header struct {
 		CommonHeader
 		Version string `binder:"Version"`
+		Unused  string `binder:"-"`
+	}
+
+	// @response 200
+	// @description A valid response
+	OKResponse struct {
+		Id     string `json:"id"`
+		Unused string `json:"-"`
+	}
+
+	// @response 400
+	// @description A bad request response
+	BadRequestResponse struct {
+		Error  string `json:"error"`
+		Unused string `json:"-"`
 	}
 }

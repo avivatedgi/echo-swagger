@@ -243,6 +243,11 @@ func (context *Context) parseParameter(operation *Operation, in ParameterLocatio
 			}
 
 			for _, property := range embeddedProperty.Properties {
+				if property.IgnoreProperty() {
+					// Ignore the property
+					continue
+				}
+
 				operation.AddParameter(in, &Parameter{
 					Name:     property.Name,
 					Required: property.Required,
@@ -262,6 +267,9 @@ func (context *Context) parseParameter(operation *Operation, in ParameterLocatio
 
 		if err := fieldProperty.ParseTags(fieldTag, BinderTag, field.Name()); err != nil {
 			return wrapError(err, "failed to parse field `%s` tags", field.Name())
+		} else if fieldProperty.IgnoreProperty() {
+			// Ignore the property
+			continue
 		}
 
 		if fieldProperty.Type == PropertyType_None || fieldProperty.Type == PropertyType_Map || fieldProperty.Type == PropertyType_Object {
@@ -368,6 +376,8 @@ func (context *Context) parseProperty(t types.Type, tag string) (*Property, erro
 				continue
 			} else if err := fieldProperty.ParseTags(fieldTag, tag, field.Name()); err != nil {
 				return nil, wrapError(err, "failed to parse field `%s` tags", field.Name())
+			} else if fieldProperty.IgnoreProperty() {
+				continue
 			}
 
 			if field.Anonymous() {
@@ -392,6 +402,10 @@ func (context *Context) parseProperty(t types.Type, tag string) (*Property, erro
 
 	default:
 		// Invalid type, return no property but also no error.
+		return nil, nil
+	}
+
+	if property.IgnoreProperty() {
 		return nil, nil
 	}
 

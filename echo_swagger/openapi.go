@@ -496,6 +496,10 @@ func (p Property) String() string {
 	}
 }
 
+func (p Property) IgnoreProperty() bool {
+	return p.Name == "-"
+}
+
 func (p *Property) ParseTags(data string, nameTag string, fieldName string) error {
 	p.Name = fieldName
 

@@ -157,6 +157,45 @@ func validOpenapi() OpenAPI {
 					},
 				},
 			},
+			Responses: map[string]Response{
+				"200": {
+					Description: "A valid response",
+					Content: map[string]MediaType{
+						ContentTypeJson: {
+							Schema: Schema{
+								Property: Property{
+									Type: PropertyType_Object,
+									Properties: map[string]Property{
+										"id": {
+											Type:   PropertyType_String,
+											Format: PropertyFormat_None,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+
+				"400": {
+					Description: "A bad request response",
+					Content: map[string]MediaType{
+						ContentTypeJson: {
+							Schema: Schema{
+								Property: Property{
+									Type: PropertyType_Object,
+									Properties: map[string]Property{
+										"error": {
+											Type:   PropertyType_String,
+											Format: PropertyFormat_None,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 
