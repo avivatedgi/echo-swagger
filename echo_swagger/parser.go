@@ -402,6 +402,9 @@ func (context *Context) parseProperty(t types.Type, tag string) (*Property, erro
 	case *types.Map:
 		property.Type = PropertyType_Map
 
+	case *types.Pointer:
+		return context.parseProperty(t.Elem(), tag)
+
 	default:
 		// Invalid type, return no property but also no error.
 		return nil, nil

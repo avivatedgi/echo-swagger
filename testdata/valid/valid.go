@@ -34,8 +34,9 @@ type Users []User
 type ExampleRequest struct {
 	Body struct {
 		CommonBody
-		Users  Users  `json:"users" validate:"required"`
-		Unused string `json:"-"`
+		Users        Users  `json:"users" validate:"required"`
+		Unused       string `json:"-"`
+		PointerValue *bool  `json:"pointerValue"`
 	}
 
 	Path struct {

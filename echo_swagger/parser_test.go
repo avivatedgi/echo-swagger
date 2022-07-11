@@ -151,6 +151,11 @@ func validOpenapi() OpenAPI {
 											},
 										},
 									},
+
+									"pointerValue": {
+										Type:   PropertyType_Boolean,
+										Format: PropertyFormat_None,
+									},
 								},
 							},
 						},
