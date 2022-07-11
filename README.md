@@ -188,6 +188,7 @@ paths:
                                         type: integer
                                 description: A bad response
 ```
+
 </details>
 
 The echo swagger knows to parse the structure documentation into attributes, and formation into swagger-scheme and with both of them to build an OpenAPI scheme.

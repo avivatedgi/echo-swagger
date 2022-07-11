@@ -349,7 +349,7 @@ func (context *Context) parseProperty(t types.Type, tag string) (*Property, erro
 			return nil, nil
 		}
 
-		property.Items = items
+		property.Items = *items
 
 	case *types.Array:
 		property.Type = PropertyType_Array
@@ -361,7 +361,7 @@ func (context *Context) parseProperty(t types.Type, tag string) (*Property, erro
 			return nil, nil
 		}
 
-		property.Items = items
+		property.Items = *items
 
 	case *types.Struct:
 		property.Type = PropertyType_Object
