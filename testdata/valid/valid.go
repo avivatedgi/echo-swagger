@@ -59,8 +59,9 @@ type ExampleRequest struct {
 	// @response 200
 	// @description A valid response
 	OKResponse struct {
-		Id     string `json:"id"`
-		Unused string `json:"-"`
+		Id     string  `json:"id"`
+		Unused string  `json:"-"`
+		Users  []*User `json:"users"`
 	}
 
 	// @response 400
@@ -69,4 +70,8 @@ type ExampleRequest struct {
 		Error  string `json:"error"`
 		Unused string `json:"-"`
 	}
+
+	// @response 500
+	// @description A internal server error response
+	InternalServerErrorResponse *User
 }

@@ -175,6 +175,26 @@ func validOpenapi() OpenAPI {
 											Type:   PropertyType_String,
 											Format: PropertyFormat_None,
 										},
+										"users": {
+											Type: PropertyType_Array,
+											Items: Property{
+												Type: PropertyType_Map,
+												Properties: map[string]Property{
+													"id": {
+														Type:   PropertyType_String,
+														Format: PropertyFormat_None,
+													},
+													"username": {
+														Type:   PropertyType_String,
+														Format: PropertyFormat_None,
+													},
+													"age": {
+														Type:   PropertyType_Integer,
+														Format: PropertyFormat_None,
+													},
+												},
+											},
+										},
 									},
 								},
 							},
@@ -192,6 +212,33 @@ func validOpenapi() OpenAPI {
 									Properties: map[string]Property{
 										"error": {
 											Type:   PropertyType_String,
+											Format: PropertyFormat_None,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+
+				"500": {
+					Description: "A internal server error response",
+					Content: map[string]MediaType{
+						ContentTypeJson: {
+							Schema: Schema{
+								Property: Property{
+									Type: PropertyType_Object,
+									Properties: map[string]Property{
+										"id": {
+											Type:   PropertyType_String,
+											Format: PropertyFormat_None,
+										},
+										"username": {
+											Type:   PropertyType_String,
+											Format: PropertyFormat_None,
+										},
+										"age": {
+											Type:   PropertyType_Integer,
 											Format: PropertyFormat_None,
 										},
 									},
