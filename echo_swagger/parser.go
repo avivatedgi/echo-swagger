@@ -402,6 +402,13 @@ func (context *Context) parseProperty(t types.Type, tag string) (*Property, erro
 	case *types.Map:
 		property.Type = PropertyType_Map
 
+		vprop, err := context.parseProperty(t.Elem(), tag)
+		if err != nil {
+			return nil, err
+		}
+
+		property.AdditionalProperties = *vprop
+
 	case *types.Pointer:
 		return context.parseProperty(t.Elem(), tag)
 

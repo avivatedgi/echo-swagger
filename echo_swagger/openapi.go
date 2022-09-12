@@ -474,6 +474,10 @@ type Property struct {
 	// It's must be of type interface{} because Items is actually a property.
 	Items interface{} `yaml:"items,omitempty"`
 
+	// The additionalProperties keyword specifies the type of values in the dictionary.
+	// Values can be primitives (strings, numbers or boolean values), arrays or objects.
+	AdditionalProperties interface{} `yaml:"additionalProperties,omitempty"`
+
 	// Used for internal use
 	Name string `yaml:"-"`
 }

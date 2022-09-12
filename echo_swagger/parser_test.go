@@ -195,6 +195,26 @@ func validOpenapi() OpenAPI {
 												},
 											},
 										},
+										"idUsers": {
+											Type: PropertyType_Map,
+											AdditionalProperties: Property{
+												Type: PropertyType_Map,
+												Properties: map[string]Property{
+													"id": {
+														Type:   PropertyType_String,
+														Format: PropertyFormat_None,
+													},
+													"username": {
+														Type:   PropertyType_String,
+														Format: PropertyFormat_None,
+													},
+													"age": {
+														Type:   PropertyType_Integer,
+														Format: PropertyFormat_None,
+													},
+												},
+											},
+										},
 									},
 								},
 							},

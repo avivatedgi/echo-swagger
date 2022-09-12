@@ -59,9 +59,10 @@ type ExampleRequest struct {
 	// @response 200
 	// @description A valid response
 	OKResponse struct {
-		Id     string  `json:"id"`
-		Unused string  `json:"-"`
-		Users  []*User `json:"users"`
+		Id      string           `json:"id"`
+		Unused  string           `json:"-"`
+		Users   []*User          `json:"users"`
+		IdUsers map[string]*User `json:"idUsers"`
 	}
 
 	// @response 400
