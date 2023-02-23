@@ -311,6 +311,8 @@ func (context *Context) parseResponse(operation *Operation, field *ast.Field) er
 	property, err := context.parseProperty(t, JsonTag)
 	if err != nil {
 		return err
+	} else if property == nil {
+		return nil
 	}
 
 	property.Description = attributes[DescriptionAttribute]
