@@ -407,6 +407,8 @@ func (context *Context) parseProperty(t types.Type, tag string) (*Property, erro
 		vprop, err := context.parseProperty(t.Elem(), tag)
 		if err != nil {
 			return nil, err
+		} else if vprop == nil {
+			return nil, nil
 		}
 
 		property.AdditionalProperties = *vprop
